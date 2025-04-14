@@ -1,0 +1,11 @@
+[package]
+name = "lcd-esp"
+version = "0.1.0"
+edition = "2021"
+
+[build]
+target = "xtensa-esp32-none-elf"
+
+[dependencies]
+esp-hal = { version = "1.0.0-beta.0", features = ["unstable", "esp32"] }
+heapless = "0.8.0"
