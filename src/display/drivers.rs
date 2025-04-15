@@ -1,9 +1,11 @@
+use core::str::Chars;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::Low;
 use esp_hal::gpio::{Flex, Output, OutputConfig};
 use esp_hal::gpio::AnyPin;
+use crate::display::instructions::Instructions;
 
-pub enum DataLength {
+pub(crate) enum DataLength {
     Bits4,
     Bits8,
 }
@@ -20,7 +22,7 @@ pub struct Pins {
     d2: Option<AnyPin>,
     d1: Option<AnyPin>,
     d0: Option<AnyPin>,
-    mode: DataLength,
+    pub(crate) mode: DataLength,
 }
 
 impl Pins {
@@ -57,7 +59,7 @@ pub(crate) struct Drivers<'a> {
     eight_bits: Option<[Flex<'a>; 8]>,
     four_bits: Option<[Flex<'a>; 4]>,
     delay: Delay,
-    mode: DataLength,
+    pub mode: DataLength,
 }
 
 impl<'a> Drivers<'a> {
@@ -87,7 +89,7 @@ impl<'a> Drivers<'a> {
         }
     }
 
-    fn write_data<I>(&mut self, data: &u8, index: u8, pins: I)
+    fn data_pins_set<I>(&mut self, data: &u8, index: u8, pins: I)
     where
         I: Iterator<Item = &'a mut Flex<'a>>
     {
@@ -99,33 +101,44 @@ impl<'a> Drivers<'a> {
                 pin.set_low();
             }
         }
+        self.delay.delay_micros(20);
         self.eoutput.set_low();
     }
 
-    pub fn write(&mut self, data: u8) {
+    pub(crate) fn write(&mut self, data: u8) {
         match self.mode {
             DataLength::Bits8 => {
                 let drv_ptr = self.eight_bits.as_mut().map(|drv| drv as *mut [Flex<'a>; 8]);
 
                 if let Some(drv_ptr) = drv_ptr {
                     let drv = unsafe { &mut *drv_ptr };
-                    self.write_data(&data, 7, drv.iter_mut());
+                    self.data_pins_set(&data, 7, drv.iter_mut());
                 }
             },
             DataLength::Bits4 => {
                 let drv_ptr = self.four_bits.as_mut().map(|drv| drv as *mut [Flex<'a>; 4]);
 
                 if let Some(drv_ptr) = drv_ptr {
-
                     unsafe {
-                        self.write_data(&data, 7, (&mut *drv_ptr).iter_mut());
+                        self.data_pins_set(&data, 7, (&mut *drv_ptr).iter_mut());
                     }
                     self.delay.delay_micros(50);
                     unsafe {
-                        self.write_data(&data, 3, (&mut *drv_ptr).iter_mut());
+                        self.data_pins_set(&data, 3, (&mut *drv_ptr).iter_mut());
                     }
                 }
             }
+        }
+    }
+    pub(crate) fn write_text(&mut self, data: Chars) {
+        for ch in data {
+            self.rsoutput.set_high();
+            self.delay.delay_micros(20);
+            self.write(ch as u8);
+            self.delay.delay_micros(20);
+            self.rsoutput.set_low();
+            self.delay.delay_micros(5);
+            self.write(Instructions::ShiftCursorRight.value());
         }
     }
 }
